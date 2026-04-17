@@ -62,6 +62,7 @@ import folderBackSrc        from '../assets/icons/folder-back.png'
 import folderFrontSrc       from '../assets/icons/folder-front.svg'
 import folderCompleteBackSrc  from '../assets/icons/folder-complete-back.svg'
 import FolderCompleteBase    from '../assets/icons/folder-complete-base.svg?react'
+import FolderCompleteBg      from '../assets/icons/folder-complete-bg.svg?react'
 import FolderCompleteOverlay from '../assets/icons/folder-complete-overlay.svg?react'
 import loaderSrc            from '../assets/icons/loader.svg'
 
@@ -304,31 +305,149 @@ function FileIcons({ stage, containerRef }: FileIconsProps) {
 // ─── Upload complete visual (202484:42458) ───────────────
 // Folder with files settled inside: gray photo card + white doc card,
 // both peeking slightly above the closed folder-front.
-// ─── Upload complete visual ───────────────────────────────
-// nessa.svg is a complete standalone folder — render it alone, no card layers.
-// Exact path of the folder overlay shape — used to clip the CSS backdrop-filter
-// so it only blurs the background behind the semi-transparent dark flap (matches
-// the foreignObject clip-path Figma uses for the same effect).
-// Clips the container to the folder body shape — hides any SVG filter bleed outside
-const FOLDER_CLIP = "path('M0 30.0154C0 13.4384 13.4384 0 30.0154 0L131.051 0C147.628 0 161.066 13.4384 161.066 30.0154V129.985C161.066 146.562 147.628 160 131.051 160L30.0154 160C13.4384 160 0 146.562 0 129.985L0 30.0154Z')"
+/* ─────────────────────────────────────────────────────────
+ * COMPLETE FOLDER — INTERACTION STORYBOARD
+ *
+ *  HOVER (hovered=true, open=false)
+ *    0ms   folder lifts (scale 1→1.03, y 0→-4px, shadow grows)
+ *
+ *  CLICK → OPEN (open=true, auto-resets after 6 000ms)
+ *    0ms   folder front flap bends toward viewer (rotateX 0→-42°, origin bottom)
+ *   80ms   white card rises from inside (y 0→-88px, opacity 0→1)
+ *    0ms   folder scale settles to 1, shadow softens
+ *
+ *  AUTO-RESET at 6 000ms (open → false)
+ *    0ms   card drops back (y→0, opacity→0, bounce 0.45)
+ *    0ms   flap closes (rotateX→0, bounce 0.40)
+ *    0ms   hover lift re-applies if still hovered
+ * ───────────────────────────────────────────────────────── */
+
+// SVG clip paths — body clip applied ONLY to the folder body layer, not the 3-D flap
+const FOLDER_CLIP  = "path('M0 30.0154C0 13.4384 13.4384 0 30.0154 0L131.051 0C147.628 0 161.066 13.4384 161.066 30.0154V129.985C161.066 146.562 147.628 160 131.051 160L30.0154 160C13.4384 160 0 146.562 0 129.985L0 30.0154Z')"
 const OVERLAY_PATH = "path('M0 28.7646C0 22.5482 5.03939 17.5088 11.2558 17.5088H31.7937C35.9813 17.5088 40.0573 18.8597 43.416 21.3608C46.7747 23.8619 50.8507 25.2128 55.0383 25.2128H131.051C147.628 25.2128 161.066 38.6512 161.066 55.2283V129.984C161.066 146.561 147.628 160 131.051 160H30.0154C13.4383 160 0 146.561 0 129.984V28.7646Z')"
 
+// ── Springs ───────────────────────────────────────────────
+const CF_LIFT  = { type: 'spring', visualDuration: 0.22, bounce: 0.25 } as const
+const CF_OPEN  = { type: 'spring', visualDuration: 0.40, bounce: 0.15 } as const
+const CF_CLOSE = { type: 'spring', visualDuration: 0.50, bounce: 0.42 } as const
+
+// ── Config ────────────────────────────────────────────────
+const CF = {
+  hoverScale:    1.03,
+  hoverY:       -4,      // px lift on hover
+  flapRotateX:  -42,     // deg — front bends toward viewer on open
+  cardRiseY:    -88,     // px — white card rises out of folder
+  cardDelay:     0.08,   // s  — card starts after flap begins
+  autoResetMs:   6000,   // ms — folder auto-closes after open
+  shadowDefault: 'drop-shadow(0 4px 10px rgba(0,0,0,0.18))',
+  shadowHover:   'drop-shadow(0 14px 26px rgba(0,0,0,0.32))',
+  shadowOpen:    'drop-shadow(0 6px 14px rgba(0,0,0,0.22))',
+}
+
+// White card dimensions matching folder-complete-base.svg card rect exactly
+// SVG card: x=12 y=12 w=138 h=116.769 rx=7.809 (viewBox 162→161.066 scale ≈0.994)
+const RCARD = {
+  left:   11.93,   // 12 × 0.994
+  top:    12,
+  width:  137.1,   // 138 × 0.994
+  height: 116.77,
+  radius: 7.76,    // 7.809 × 0.994
+  bar1Top: 18.2,   // y=30.2 in SVG − card top 12
+  bar2Top: 25.8,
+  barLeft:  7.2,
+  bar1W:  120.5,
+  bar2W:   48.6,
+  barH:     4.5,
+  barR:     2.3,
+}
+
 function CompleteFolder() {
+  const reduced = useReducedMotion()
+  const [hovered, setHovered] = useState(false)
+  const [open,    setOpen]    = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout>>()
+
+  const handleClick = useCallback(() => {
+    if (open) {
+      clearTimeout(timerRef.current)
+      setOpen(false)
+    } else {
+      setOpen(true)
+      clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => setOpen(false), CF.autoResetMs)
+    }
+  }, [open])
+
+  useEffect(() => () => clearTimeout(timerRef.current), [])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-      <div style={{
-        position: 'relative', width: '161.066px', height: '160px', flexShrink: 0,
-        clipPath: FOLDER_CLIP,
-      }}>
-        <FolderCompleteBase style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
-        <div style={{
-          position: 'absolute', inset: 0,
-          backdropFilter: 'blur(18.76px)',
-          WebkitBackdropFilter: 'blur(18.76px)',
-          clipPath: OVERLAY_PATH,
-        }} />
-        <FolderCompleteOverlay style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
-      </div>
+
+      {/* ── Outer: hover lift + drop-shadow (no clip so shadow isn't cut) ── */}
+      <motion.div
+        style={{ position: 'relative', width: '161.066px', height: '160px', flexShrink: 0, cursor: 'pointer' }}
+        animate={reduced ? {} : {
+          scale:  open ? 1 : hovered ? CF.hoverScale : 1,
+          y:      open ? 0 : hovered ? CF.hoverY     : 0,
+          filter: open ? CF.shadowOpen : hovered ? CF.shadowHover : CF.shadowDefault,
+        }}
+        transition={open ? CF_OPEN : hovered ? CF_LIFT : CF_CLOSE}
+        onHoverStart={() => setHovered(true)}
+        onHoverEnd={() => setHovered(false)}
+        onClick={handleClick}
+      >
+        {/* perspective wrapper — no clip-path here so 3-D children work */}
+        <div style={{ position: 'absolute', inset: 0, perspective: '520px' }}>
+
+          {/* ① Folder background — dark body + shadow, always static */}
+          <div style={{ position: 'absolute', inset: 0, clipPath: FOLDER_CLIP }}>
+            <FolderCompleteBg style={{ width: '100%', height: '100%', display: 'block' }} />
+          </div>
+
+          {/* ② White card — z=1, sits above bg, rises on open */}
+          <motion.div
+            style={{
+              position: 'absolute',
+              left: RCARD.left, top: RCARD.top,
+              width: RCARD.width, height: RCARD.height,
+              borderRadius: RCARD.radius,
+              background: 'white',
+              border: '0.65px solid #EDEDED',
+              boxShadow: '0 4px 12px rgba(68,68,68,0.16)',
+              pointerEvents: 'none',
+              zIndex: 1,
+            }}
+            animate={reduced ? {} : { y: open ? CF.cardRiseY : 0 }}
+            transition={open ? { ...CF_OPEN, delay: CF.cardDelay } : CF_CLOSE}
+          >
+            <div style={{ position: 'absolute', top: RCARD.bar1Top, left: RCARD.barLeft, width: RCARD.bar1W, height: RCARD.barH, borderRadius: RCARD.barR, background: '#E2E2E0' }} />
+            <div style={{ position: 'absolute', top: RCARD.bar2Top, left: RCARD.barLeft, width: RCARD.bar2W, height: RCARD.barH, borderRadius: RCARD.barR, background: '#E2E2E0' }} />
+          </motion.div>
+
+          {/* ③ Blur — fades out as flap opens, smoothly returns on close */}
+          <motion.div
+            style={{
+              position: 'absolute', inset: 0,
+              backdropFilter: 'blur(18.76px)',
+              WebkitBackdropFilter: 'blur(18.76px)',
+              clipPath: OVERLAY_PATH,
+              zIndex: 2,
+            }}
+            animate={reduced ? {} : { opacity: open ? 0 : 1 }}
+            transition={open ? CF_OPEN : CF_CLOSE}
+          />
+
+          {/* ④ Folder front flap — z=3, covers everything when closed, rotates open on click */}
+          <motion.div
+            style={{ position: 'absolute', inset: 0, transformOrigin: 'center bottom', zIndex: 3 }}
+            animate={reduced ? {} : { rotateX: open ? CF.flapRotateX : 0 }}
+            transition={open ? CF_OPEN : CF_CLOSE}
+          >
+            <FolderCompleteOverlay style={{ width: '100%', height: '100%', display: 'block' }} />
+          </motion.div>
+
+        </div>
+      </motion.div>
     </div>
   )
 }
@@ -675,7 +794,7 @@ export const FileUpload = forwardRef<FileUploadHandle>((_, ref) => {
             display: 'flex', flexDirection: 'column',
             alignItems: 'center', gap: '20px',
             padding: '32px 40px', width: '100%',
-            overflow: 'hidden', position: 'relative',
+            overflow: isComplete ? 'visible' : 'hidden', position: 'relative',
           }}
         >
           <AnimatePresence mode="wait">
@@ -746,7 +865,7 @@ export const FileUpload = forwardRef<FileUploadHandle>((_, ref) => {
           whileTap={!isUploading ? { scale: 0.97, transition: { duration: 0.10 } } : undefined}
           onClick={() => {
             if (isUploading) return
-            if (isComplete) { startUpload(); return }
+            if (isComplete) { setUploadState('idle'); return }
             fileInputRef.current?.click()
           }}
           style={{
