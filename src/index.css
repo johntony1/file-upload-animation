@@ -8,7 +8,7 @@
 
   body {
     margin: 0;
-    background: radial-gradient(ellipse at 50% 40%, #ebebeb 0%, #e2e2e2 100%);
+    background: #ffffff;
     min-height: 100svh;
     display: flex;
     align-items: center;
