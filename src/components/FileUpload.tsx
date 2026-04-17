@@ -60,8 +60,6 @@ import fileRightSrc         from '../assets/icons/file-right.svg'
 import fileCenterSrc        from '../assets/icons/file-center.svg'
 import folderBackSrc        from '../assets/icons/folder-back.png'
 import folderFrontSrc       from '../assets/icons/folder-front.svg'
-import folderCompleteBackSrc  from '../assets/icons/folder-complete-back.svg'
-import FolderCompleteBase    from '../assets/icons/folder-complete-base.svg?react'
 import FolderCompleteBg      from '../assets/icons/folder-complete-bg.svg?react'
 import FolderCompleteOverlay from '../assets/icons/folder-complete-overlay.svg?react'
 import loaderSrc            from '../assets/icons/loader.svg'
@@ -365,7 +363,7 @@ function CompleteFolder() {
   const reduced = useReducedMotion()
   const [hovered, setHovered] = useState(false)
   const [open,    setOpen]    = useState(false)
-  const timerRef = useRef<ReturnType<typeof setTimeout>>()
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const handleClick = useCallback(() => {
     if (open) {
@@ -664,7 +662,7 @@ export const FileUpload = forwardRef<FileUploadHandle>((_, ref) => {
   const reducedMotion = useReducedMotion() ?? false
   const [uploadState, setUploadState] = useState<UploadState>('idle')
   const [stage,       setStage      ] = useState(0)
-  const [replayKey,   setReplayKey  ] = useState(0)
+  const [replayKey] = useState(0)
 
   const fileInputRef      = useRef<HTMLInputElement>(null)
   const iconsContainerRef = useRef<HTMLDivElement>(null)
